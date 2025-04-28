@@ -3,7 +3,7 @@ import re
 from telethon.tl.types import Message
 from .. import loader, utils
 
-__version__ = (1, 0, 0)
+__version__ = (1, 0, 1)
 
 #        █████  ██████   ██████ ███████  ██████  ██████   ██████ 
 #       ██   ██ ██   ██ ██      ██      ██      ██    ██ ██      
@@ -81,6 +81,13 @@ class GeminiRealtimeMod(loader.Module):
                 result.append(formatted_code)
             else:
                 text_part = part[1]
+                # Обрабатываем ссылки в формате [название](ссылка)
+                text_part = re.sub(
+                    r'\[([^\]]+)\]\((https?://[^\s]+)\)',
+                    r'<a href="\2">\1</a>',
+                    text_part
+                )
+                # Обрабатываем остальные элементы Markdown
                 text_part = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text_part)
                 text_part = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text_part)
                 text_part = re.sub(r"^# (.+)", r"<b>\1</b>", text_part, flags=re.MULTILINE)
