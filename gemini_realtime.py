@@ -1,14 +1,16 @@
+
 import aiohttp
 import re
+from urllib.parse import quote
 from telethon.tl.types import Message
 from .. import loader, utils
 
-__version__ = (1, 0, 1)
+__version__ = (1, 0, 2)
 
-#        █████  ██████   ██████ ███████  ██████  ██████   ██████ 
-#       ██   ██ ██   ██ ██      ██      ██      ██    ██ ██      
-#       ███████ ██████  ██      █████   ██      ██    ██ ██      
-#       ██   ██ ██      ██      ██      ██      ██    ██ ██      
+#        █████  ██████   ██████ ███████  ██████  ██████   ██████
+#       ██   ██ ██   ██ ██      ██      ██      ██    ██ ██
+#       ███████ ██████  ██      █████   ██      ██    ██ ██
+#       ██   ██ ██      ██      ██      ██      ██    ██ ██
 #       ██   ██ ██       ██████ ███████  ██████  ██████   ██████
 
 #              © Copyright 2025
@@ -59,7 +61,9 @@ class GeminiRealtimeMod(loader.Module):
         """
         parts = []
         last_pos = 0
-        code_blocks = re.finditer(r"```(\w+)?\n([\s\S]*?)```", text)
+        code_blocks = re.finditer(r"(\w+)?\n([\s\S]*?)", text)
+
+        
 
         for match in code_blocks:
             start, end = match.span()
@@ -81,13 +85,11 @@ class GeminiRealtimeMod(loader.Module):
                 result.append(formatted_code)
             else:
                 text_part = part[1]
-                # Обрабатываем ссылки в формате [название](ссылка)
                 text_part = re.sub(
                     r'\[([^\]]+)\]\((https?://[^\s]+)\)',
                     r'<a href="\2">\1</a>',
                     text_part
                 )
-                # Обрабатываем остальные элементы Markdown
                 text_part = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text_part)
                 text_part = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text_part)
                 text_part = re.sub(r"^# (.+)", r"<b>\1</b>", text_part, flags=re.MULTILINE)
@@ -113,16 +115,18 @@ class GeminiRealtimeMod(loader.Module):
         api_url = "https://api.paxsenix.biz.id/ai/gemini-realtime"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": "Bearer YOUR_API_KEY",
+            "Authorization": "Bearer YOUR_API_KEY", # Не забудь тут свой ключ вписать, если надо
         }
-        params = {"text": args}
-        
+
+        # --- ИЗМЕНЕНИЕ 1: Ручная сборка URL ---
+        encoded_args = quote(args)
+        full_url = f"{api_url}?text={encoded_args}"
         if self.config["session_id"]:
-            params["session_id"] = self.config["session_id"]
+            full_url += f"&session_id={self.config['session_id']}"
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, headers=headers, params=params) as resp:
+                async with session.get(full_url, headers=headers) as resp: # Используем full_url, убираем params
                     if resp.status == 200:
                         data = await resp.json()
                         if not data.get("ok", False):
@@ -133,17 +137,18 @@ class GeminiRealtimeMod(loader.Module):
                             return
 
                         response_message = data.get("message", "No response received.")
-
                         html_response = self._markdown_to_html(response_message)
-
+                        
                         new_session_id = data.get("session_id")
                         if new_session_id:
                             self.config["session_id"] = new_session_id
 
-                        await utils.answer(
-                            message,
-                            self.strings("response").format(response=html_response),
-                        )
+                        # --- ИЗМЕНЕНИЕ 2: Нарезка длинного ответа ---
+                        for chunk in [html_response[i:i + 4096] for i in range(0, len(html_response), 4096)]:
+                             # Первое сообщение редактируем, остальные отправляем как новые
+                            if message.id == (await utils.answer(message, self.strings("response").format(response=chunk))).id:
+                                continue
+                            
                     elif resp.status == 400:
                         await utils.answer(
                             message,
@@ -170,3 +175,4 @@ class GeminiRealtimeMod(loader.Module):
         """Clear the session ID to start a new chat"""
         self.config["session_id"] = None
         await utils.answer(message, self.strings("session_cleared"))
+
